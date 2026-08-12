@@ -1,11 +1,17 @@
 :root {
-  --bg: #0f1115;
-  --card: #171a21;
-  --border: #262a33;
-  --text: #e6e8ec;
-  --muted: #8a8f98;
-  --green: #3ddc84;
-  --red: #ff5c5c;
+  --bg: #09090b;
+  --card: #131316;
+  --card-hover: #17171b;
+  --border: #232328;
+  --border-hover: #323238;
+  --text: #f2f2f4;
+  --muted: #8b8b93;
+  --dim: #59595f;
+  --accent: #3ddc84;
+  --danger: #f8695f;
+  --radius: 12px;
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -14,69 +20,147 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
 }
+
+a { color: inherit; }
 
 header {
   display: flex;
-  align-items: baseline;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.75rem;
   padding: 1.5rem 2rem;
   border-bottom: 1px solid var(--border);
 }
 
-header h1 { margin: 0; font-size: 1.25rem; }
-#summary { color: var(--muted); }
+header h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+#summary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
 
 main {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
   padding: 2rem;
+  max-width: 1400px;
 }
 
-.empty { color: var(--muted); grid-column: 1 / -1; }
+.empty {
+  color: var(--dim);
+  grid-column: 1 / -1;
+  font-size: 0.9rem;
+}
 
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem;
+  border-radius: var(--radius);
+  padding: 1.1rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.card.disabled { opacity: 0.5; }
+.card:hover {
+  border-color: var(--border-hover);
+  background: var(--card-hover);
+}
+
+.card.disabled { opacity: 0.45; }
 
 .card-head {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  gap: 0.55rem;
+  margin-bottom: 0.7rem;
 }
 
-.name { font-weight: 600; flex: 1; }
+.name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--red);
+  background: var(--danger);
   flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(248, 105, 95, 0.12);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
-.card.online .dot { background: var(--green); }
+.card.online .dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(61, 220, 132, 0.14);
+}
 
-.toggle {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.75rem;
+/* Toggle switch, not a text button -- reads at a glance without a label. */
+.toggle-switch {
+  --w: 30px;
+  --h: 17px;
+  width: var(--w);
+  height: var(--h);
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
   cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
 }
-.toggle:hover { color: var(--text); }
+.toggle-switch:hover { background: var(--border-hover); }
+.toggle-switch.on { background: var(--accent); }
+.toggle-switch.on:hover { background: var(--accent); opacity: 0.9; }
+.toggle-switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+.toggle-switch.on .knob { transform: translateX(13px); }
 
 .row {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--muted);
-  margin: 0.2rem 0;
+  margin: 0.25rem 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.row .val {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.vram-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  margin-top: 0.15rem;
+  overflow: hidden;
+}
+.vram-bar .fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
 }

@@ -6,60 +6,84 @@
   <title>Connect a node - Hermes Fleet</title>
   <link rel="stylesheet" href="/static/dashboard.css">
   <style>
-    main.connect { display: block; padding: 2rem; max-width: 700px; }
-    p.lead { color: var(--muted); margin-top: 0; }
+    main.connect { display: block; padding: 2rem; max-width: 640px; }
+    p.lead { color: var(--muted); margin-top: 0; font-size: 0.9rem; line-height: 1.6; }
+
     .warning {
-      background: #2a1f10; border: 1px solid #5a3d10; color: #e8c374;
-      border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.85rem; margin-bottom: 1.5rem;
+      background: var(--card); border: 1px solid var(--border);
+      border-left: 2px solid #caa63d;
+      border-radius: 8px; padding: 0.8rem 1rem; font-size: 0.82rem; line-height: 1.6;
+      color: var(--muted); margin-bottom: 1rem;
+    }
+    .warning code {
+      background: rgba(255,255,255,0.06); border-radius: 4px; padding: 0.1rem 0.35rem;
+      font-family: var(--mono); font-size: 0.78rem; color: var(--text);
+    }
+
+    .cmd-block { margin-top: 1.75rem; }
+    .cmd-label {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--dim); margin-bottom: 0.5rem;
     }
     pre.cmd {
-      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-      padding: 1rem; white-space: pre-wrap; word-break: break-all;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem;
-      position: relative;
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1rem 1.1rem; white-space: pre-wrap; word-break: break-all;
+      font-family: var(--mono); font-size: 0.82rem; line-height: 1.6; color: var(--text);
+      margin: 0;
     }
     button.copy {
-      margin-top: 0.75rem; background: var(--card); border: 1px solid var(--border);
-      color: var(--text); border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
+      margin-top: 0.6rem; background: var(--card); border: 1px solid var(--border);
+      color: var(--muted); border-radius: 7px; padding: 0.45rem 0.9rem; cursor: pointer;
+      font-size: 0.82rem; transition: border-color 0.15s ease, color 0.15s ease;
     }
-    button.copy:hover { border-color: var(--green); }
-    form.model-form { margin-top: 2rem; display: flex; gap: 0.5rem; align-items: center; }
-    form.model-form label { color: var(--muted); font-size: 0.85rem; }
+    button.copy:hover { border-color: var(--accent); color: var(--text); }
+
+    form.model-form {
+      margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
+      display: flex; gap: 0.6rem; align-items: center;
+    }
+    form.model-form label { color: var(--dim); font-size: 0.82rem; }
     form.model-form input {
       background: var(--card); border: 1px solid var(--border); color: var(--text);
-      border-radius: 6px; padding: 0.4rem 0.6rem;
+      border-radius: 7px; padding: 0.45rem 0.7rem; font-size: 0.85rem; font-family: var(--mono);
     }
+    form.model-form input:focus { outline: none; border-color: var(--accent); }
     form.model-form button {
-      background: var(--card); border: 1px solid var(--border); color: var(--text);
-      border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
+      background: var(--card); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 7px; padding: 0.45rem 0.9rem; cursor: pointer; font-size: 0.82rem;
+      transition: border-color 0.15s ease, color 0.15s ease;
     }
+    form.model-form button:hover { border-color: var(--accent); color: var(--text); }
   </style>
 </head>
 <body>
   <header>
     <h1>Hermes Fleet</h1>
-    <div id="summary"><a href="/" style="color: var(--muted);">&larr; dashboard</a></div>
+    <div id="summary"><a href="/" style="color: var(--dim);">&larr; dashboard</a></div>
   </header>
   <main class="connect">
-    <p class="lead">Send this one command to a friend. It installs Tailscale, joins your tailnet, then installs and registers a node -- nothing else needed from them.</p>
+    <p class="lead">Send this one command to a friend. It installs Tailscale, joins your tailnet, then installs and registers a node &mdash; nothing else needed from them.</p>
 
     {% if not advertise_ip %}
     <div class="warning">
       Tailscale isn't detected on this host yet, so the command below can't reach it.
-      Install Tailscale here and run <code>tailscale up</code>, or set FLEET_ADVERTISE_IP,
+      Install Tailscale here and run <code>tailscale up</code>, or set <code>FLEET_ADVERTISE_IP</code>,
       then reload this page.
     </div>
     {% endif %}
     {% if not tailscale_authkey %}
     <div class="warning">
-      No reusable Tailscale auth key configured (FLEET_TS_AUTHKEY) -- your friend's
+      No reusable Tailscale auth key configured (<code>FLEET_TS_AUTHKEY</code>) &mdash; your friend's
       <code>tailscale up</code> will need to open a browser and log in manually.
       Generate a reusable, pre-approved key in the Tailscale admin console to skip this.
     </div>
     {% endif %}
 
-    <pre class="cmd" id="cmd">{{ install_cmd }}</pre>
-    <button class="copy" id="copy-btn" data-cmd="{{ install_cmd }}">copy command</button>
+    <div class="cmd-block">
+      <div class="cmd-label">install command</div>
+      <pre class="cmd" id="cmd">{{ install_cmd }}</pre>
+      <button class="copy" id="copy-btn" data-cmd="{{ install_cmd }}">copy command</button>
+    </div>
 
     <form class="model-form" method="get" action="/connect">
       <label for="model">model to install:</label>

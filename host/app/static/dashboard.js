@@ -35,21 +35,28 @@ function nodeCard(n) {
   const name = escapeHtml(n.name);
   const gpu = escapeHtml(n.gpu || "CPU only");
   const models = n.models.length ? escapeHtml(n.models.join(", ")) : "-";
+  const vramRow = n.vram_total_mb
+    ? `
+      <div class="row"><span>VRAM</span><span class="val">${fmtMb(n.vram_used_mb)} / ${fmtMb(n.vram_total_mb)}</span></div>
+      <div class="vram-bar"><div class="fill" style="width: ${memPct}%"></div></div>
+    `
+    : "";
   return `
     <div class="card ${n.online ? "online" : "offline"} ${n.enabled ? "" : "disabled"}">
       <div class="card-head">
         <span class="dot"></span>
         <span class="name">${name}</span>
-        <button class="toggle" data-id="${escapeHtml(n.id)}" data-enabled="${n.enabled}">
-          ${n.enabled ? "disable" : "enable"}
-        </button>
+        <button
+          class="toggle-switch ${n.enabled ? "on" : ""}"
+          data-id="${escapeHtml(n.id)}"
+          data-enabled="${n.enabled}"
+          title="${n.enabled ? "disable" : "enable"}"
+        ><span class="knob"></span></button>
       </div>
-      <div class="row">${gpu}</div>
-      <div class="row">VRAM ${fmtMb(n.vram_used_mb)} / ${fmtMb(n.vram_total_mb)}${
-        memPct != null ? ` (${memPct}%)` : ""
-      }</div>
-      <div class="row">models: ${models}</div>
-      <div class="row">uptime ${fmtUptime(n.uptime_s)}</div>
+      <div class="row"><span>${gpu}</span></div>
+      ${vramRow}
+      <div class="row"><span>models</span><span class="val">${models}</span></div>
+      <div class="row"><span>uptime</span><span class="val">${fmtUptime(n.uptime_s)}</span></div>
     </div>
   `;
 }
@@ -66,7 +73,7 @@ async function refresh() {
     ? nodes.map(nodeCard).join("")
     : `<p class="empty">No nodes yet.</p>`;
 
-  for (const btn of container.querySelectorAll(".toggle")) {
+  for (const btn of container.querySelectorAll(".toggle-switch")) {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
       const enabled = btn.dataset.enabled === "true";
