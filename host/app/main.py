@@ -42,6 +42,7 @@ from .schemas import (
 
 APP_DIR = Path(__file__).resolve().parent
 AGENT_TEMPLATE = APP_DIR / "agent_template.sh"
+AGENT_TEMPLATE_PS1 = APP_DIR / "agent_template.ps1"
 
 
 @asynccontextmanager
@@ -185,8 +186,12 @@ def _validate_token(token: str) -> str:
     return token
 
 
-def _build_install_command(model: str) -> str:
-    host_url = f"http://{settings.advertise_ip or '<your-tailscale-ip>'}:{settings.port}"
+def _host_url() -> str:
+    return f"http://{settings.advertise_ip or '<your-tailscale-ip>'}:{settings.port}"
+
+
+def _build_install_command_unix(model: str) -> str:
+    host_url = _host_url()
     tailscale_up = (
         f"sudo tailscale up --authkey={settings.tailscale_authkey}"
         if settings.tailscale_authkey
@@ -200,6 +205,35 @@ def _build_install_command(model: str) -> str:
     )
 
 
+def _build_install_command_windows(model: str) -> str:
+    host_url = _host_url()
+    tailscale_up = (
+        f"tailscale up --authkey={settings.tailscale_authkey}"
+        if settings.tailscale_authkey
+        else "tailscale up"
+    )
+    agent_url = f"{host_url}/agent.ps1?token={settings.invite_token}&model={model}"
+    # Direct MSI download+install, not winget -- winget/App Installer isn't
+    # guaranteed present (older Windows 10, locked-down/enterprise images).
+    # pkgs.tailscale.com is Tailscale's own documented URL for scripted
+    # installs, so this works on any Windows with nothing pre-installed.
+    # PATH is refreshed in-session afterward since a freshly-installed
+    # tailscale.exe won't be on PATH until a new shell otherwise.
+    install_tailscale = (
+        '$msi = "$env:TEMP\\tailscale-setup.msi"'
+        "; Invoke-WebRequest -Uri https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi -OutFile $msi -UseBasicParsing"
+        "; Start-Process msiexec.exe -ArgumentList '/i',$msi,'/quiet','/norestart' -Wait"
+        "; $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
+    )
+    # `;` not `&&`: the default "Windows PowerShell" (5.1) that ships with
+    # Windows doesn't support &&/|| conditional chaining -- that's a
+    # PowerShell 7+ (pwsh) addition. `;` runs regardless of prior success,
+    # which is less strict than the bash version, but works on whatever
+    # PowerShell a friend already has open without asking them to install
+    # PowerShell 7 first.
+    return f"{install_tailscale} ; {tailscale_up} ; irm '{agent_url}' | iex"
+
+
 @app.get("/connect", response_class=HTMLResponse)
 def connect(request: Request, model: str = ""):
     chosen_model = _validate_model(model) if model else _default_model()
@@ -208,11 +242,22 @@ def connect(request: Request, model: str = ""):
         "connect.html",
         {
             "model": chosen_model,
-            "install_cmd": _build_install_command(chosen_model),
+            "install_cmd_unix": _build_install_command_unix(chosen_model),
+            "install_cmd_windows": _build_install_command_windows(chosen_model),
             "advertise_ip": settings.advertise_ip,
             "tailscale_authkey": settings.tailscale_authkey,
         },
     )
+
+
+def _render_agent_script(template_path: Path, token: str, model: str, host_url: str, media_type: str) -> PlainTextResponse:
+    script = template_path.read_text()
+    script = (
+        script.replace("__HOST_URL__", host_url)
+        .replace("__TOKEN__", token)
+        .replace("__MODEL__", model)
+    )
+    return PlainTextResponse(script, media_type=media_type)
 
 
 @app.get("/agent.sh", response_class=PlainTextResponse)
@@ -224,14 +269,20 @@ def agent_script(request: Request, token: str = "", model: str = ""):
     token = _validate_token(token) if token else settings.invite_token
     model = _validate_model(model) if model else _default_model()
     host_url = f"http://{settings.advertise_ip or request.client.host}:{settings.port}"
+    return _render_agent_script(AGENT_TEMPLATE, token, model, host_url, "text/x-shellscript")
 
-    script = AGENT_TEMPLATE.read_text()
-    script = (
-        script.replace("__HOST_URL__", host_url)
-        .replace("__TOKEN__", token)
-        .replace("__MODEL__", model)
-    )
-    return PlainTextResponse(script, media_type="text/x-shellscript")
+
+@app.get("/agent.ps1", response_class=PlainTextResponse)
+def agent_script_windows(request: Request, token: str = "", model: str = ""):
+    # Same validation as /agent.sh, reused as-is: the allowed character set
+    # (letters, digits, `.` `_` `-` `:` `/`) contains nothing that can break
+    # out of a PowerShell double-quoted assignment either -- no `$`,
+    # backtick, quote, or parenthesis -- so one validator covers both
+    # embedding contexts.
+    token = _validate_token(token) if token else settings.invite_token
+    model = _validate_model(model) if model else _default_model()
+    host_url = f"http://{settings.advertise_ip or request.client.host}:{settings.port}"
+    return _render_agent_script(AGENT_TEMPLATE_PS1, token, model, host_url, "text/plain")
 
 
 @app.get("/", response_class=HTMLResponse)

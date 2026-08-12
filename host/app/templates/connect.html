@@ -25,6 +25,14 @@
       font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
       color: var(--dim); margin-bottom: 0.5rem;
     }
+    .tabs { display: flex; gap: 0.4rem; margin-bottom: 0.75rem; }
+    .tab {
+      background: var(--card); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 7px; padding: 0.4rem 0.85rem; cursor: pointer; font-size: 0.82rem;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { border-color: var(--accent); color: var(--text); }
     pre.cmd {
       background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
       padding: 1rem 1.1rem; white-space: pre-wrap; word-break: break-all;
@@ -81,8 +89,12 @@
 
     <div class="cmd-block">
       <div class="cmd-label">install command</div>
-      <pre class="cmd" id="cmd">{{ install_cmd }}</pre>
-      <button class="copy" id="copy-btn" data-cmd="{{ install_cmd }}">copy command</button>
+      <div class="tabs">
+        <button class="tab active" id="tab-unix" type="button">Linux / macOS</button>
+        <button class="tab" id="tab-windows" type="button">Windows</button>
+      </div>
+      <pre class="cmd" id="cmd">{{ install_cmd_unix }}</pre>
+      <button class="copy" id="copy-btn" data-unix="{{ install_cmd_unix }}" data-windows="{{ install_cmd_windows }}">copy command</button>
     </div>
 
     <form class="model-form" method="get" action="/connect">
@@ -92,10 +104,24 @@
     </form>
   </main>
   <script>
-    document.getElementById("copy-btn").addEventListener("click", async (e) => {
-      await navigator.clipboard.writeText(e.target.dataset.cmd);
-      e.target.textContent = "copied!";
-      setTimeout(() => { e.target.textContent = "copy command"; }, 1500);
+    const cmdEl = document.getElementById("cmd");
+    const copyBtn = document.getElementById("copy-btn");
+    const tabUnix = document.getElementById("tab-unix");
+    const tabWindows = document.getElementById("tab-windows");
+
+    function showTab(platform) {
+      cmdEl.textContent = copyBtn.dataset[platform];
+      tabUnix.classList.toggle("active", platform === "unix");
+      tabWindows.classList.toggle("active", platform === "windows");
+    }
+
+    tabUnix.addEventListener("click", () => showTab("unix"));
+    tabWindows.addEventListener("click", () => showTab("windows"));
+
+    copyBtn.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(cmdEl.textContent);
+      copyBtn.textContent = "copied!";
+      setTimeout(() => { copyBtn.textContent = "copy command"; }, 1500);
     });
   </script>
 </body>
