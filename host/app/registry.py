@@ -23,6 +23,25 @@ from typing import Any
 from .db import Database
 
 
+def _model_aliases(model: str) -> set[str]:
+    """Ollama always stores fully-tagged names (`ollama list` never omits
+    the tag, e.g. "hermes3:latest"), but callers -- Hermes included --
+    commonly request the bare name ("hermes3") and expect Ollama's own
+    "no tag means :latest" convention to apply. Without this, a real node
+    that has genuinely pulled "hermes3" would never match a request for
+    "hermes3", because the stored name is "hermes3:latest" -- found by
+    testing agent.sh against a real registration, not a hypothetical.
+    """
+    aliases = {model}
+    if ":" not in model:
+        aliases.add(f"{model}:latest")
+    else:
+        base, _, tag = model.partition(":")
+        if tag == "latest":
+            aliases.add(base)
+    return aliases
+
+
 @dataclass
 class NodeView:
     """A node plus its derived live state, as the dashboard/router see it."""
@@ -195,15 +214,17 @@ class Registry:
         the policy without touching storage.
         """
         cutoff = time.time() - self.node_timeout_s
+        aliases = _model_aliases(model)
+        placeholders = ",".join("?" for _ in aliases)
         rows = self.db.query(
             self._NODE_SELECT
-            + """
+            + f"""
              WHERE n.enabled = 1
                AND n.last_seen >= ?
                AND EXISTS (SELECT 1 FROM node_models m
-                            WHERE m.node_id = n.id AND m.model = ?)
+                            WHERE m.node_id = n.id AND m.model IN ({placeholders}))
             """,
-            (cutoff, model),
+            (cutoff, *aliases),
         )
         return self._rows_to_views(rows)
 

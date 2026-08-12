@@ -145,3 +145,30 @@ def test_candidates_filter_by_model(reg):
 
 def test_set_enabled_unknown_node_returns_false(reg):
     assert reg.set_enabled("ghost", True) is False
+
+
+def test_bare_model_name_matches_a_node_that_reports_the_latest_tag(reg):
+    """Real bug, found by running agent.sh against a real registration:
+    `ollama list` always reports fully-tagged names ("hermes3:latest"), but
+    a request for the bare name ("hermes3") must still find it -- that's
+    Ollama's own "no tag means :latest" convention, and callers rely on it.
+    """
+    reg.register(payload(models=["hermes3:latest"]))
+    assert [n.id for n in reg.candidates_for_model("hermes3")] == ["node-a"]
+
+
+def test_tagged_request_matches_a_node_that_reports_the_bare_name(reg):
+    """The reverse direction: some other path stored the bare name, and a
+    caller explicitly asks for ":latest" -- these must be treated the same.
+    """
+    reg.register(payload(models=["hermes3"]))
+    assert [n.id for n in reg.candidates_for_model("hermes3:latest")] == ["node-a"]
+
+
+def test_non_latest_tag_does_not_alias_to_a_different_tag(reg):
+    """A specific non-":latest" tag must NOT match a differently-tagged
+    version of the same model -- "hermes3:7b" and "hermes3:70b" are
+    different models, not the same model under two names.
+    """
+    reg.register(payload(models=["hermes3:70b"]))
+    assert reg.candidates_for_model("hermes3:7b") == []

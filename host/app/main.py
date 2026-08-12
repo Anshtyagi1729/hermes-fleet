@@ -16,12 +16,13 @@ Two trust boundaries, deliberately different:
     right now, on localhost, since bind_host defaults to 127.0.0.1).
 """
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -39,6 +40,7 @@ from .schemas import (
 )
 
 APP_DIR = Path(__file__).resolve().parent
+AGENT_TEMPLATE = APP_DIR / "agent_template.sh"
 
 
 @asynccontextmanager
@@ -149,6 +151,58 @@ def list_models(registry: Registry = Depends(get_registry)):
         "object": "list",
         "data": [{"id": m, "object": "model", "owned_by": "hermes-fleet"} for m in registry.known_models()],
     }
+
+
+def _default_model() -> str:
+    return os.environ.get("FLEET_DEFAULT_MODEL", "hermes3")
+
+
+def _build_install_command(model: str) -> str:
+    host_url = f"http://{settings.advertise_ip or '<your-tailscale-ip>'}:{settings.port}"
+    tailscale_up = (
+        f"sudo tailscale up --authkey={settings.tailscale_authkey}"
+        if settings.tailscale_authkey
+        else "sudo tailscale up"
+    )
+    agent_url = f"{host_url}/agent.sh?token={settings.invite_token}&model={model}"
+    return (
+        "curl -fsSL https://tailscale.com/install.sh | sh"
+        f" && {tailscale_up}"
+        f" && curl -fsSL '{agent_url}' | bash"
+    )
+
+
+@app.get("/connect", response_class=HTMLResponse)
+def connect(request: Request, model: str = ""):
+    chosen_model = model or _default_model()
+    return templates.TemplateResponse(
+        request,
+        "connect.html",
+        {
+            "model": chosen_model,
+            "install_cmd": _build_install_command(chosen_model),
+            "advertise_ip": settings.advertise_ip,
+            "tailscale_authkey": settings.tailscale_authkey,
+        },
+    )
+
+
+@app.get("/agent.sh", response_class=PlainTextResponse)
+def agent_script(request: Request, token: str = "", model: str = ""):
+    # Not gated on the invite token: the SCRIPT isn't the secret, the
+    # /api/register call it makes later is (and that's checked there). An
+    # invalid token embedded here just means registration 401s downstream.
+    token = token or settings.invite_token
+    model = model or _default_model()
+    host_url = f"http://{settings.advertise_ip or request.client.host}:{settings.port}"
+
+    script = AGENT_TEMPLATE.read_text()
+    script = (
+        script.replace("__HOST_URL__", host_url)
+        .replace("__TOKEN__", token)
+        .replace("__MODEL__", model)
+    )
+    return PlainTextResponse(script, media_type="text/x-shellscript")
 
 
 @app.get("/", response_class=HTMLResponse)

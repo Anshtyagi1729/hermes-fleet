@@ -8,6 +8,7 @@ sent to your friends.
 
 import os
 import secrets
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +25,21 @@ def _persistent_token(name: str) -> str:
     path.write_text(token)
     path.chmod(0o600)
     return token
+
+
+def _detect_tailscale_ip() -> str:
+    """Best-effort `tailscale ip -4`, empty string if tailscale isn't
+    installed/running. Used so /connect can show a working command without
+    you having to hand-set FLEET_ADVERTISE_IP once tailscale is set up here.
+    """
+    try:
+        result = subprocess.run(
+            ["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=3
+        )
+        ip = result.stdout.strip()
+        return ip if result.returncode == 0 and ip else ""
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
 
 
 @dataclass(frozen=True)
@@ -74,7 +90,7 @@ def load_settings() -> Settings:
         db_path=Path(os.environ.get("FLEET_DB", DATA_DIR / "fleet.db")),
         invite_token=os.environ.get("FLEET_INVITE_TOKEN") or _persistent_token("invite_token"),
         tailscale_authkey=os.environ.get("FLEET_TS_AUTHKEY", ""),
-        advertise_ip=os.environ.get("FLEET_ADVERTISE_IP", ""),
+        advertise_ip=os.environ.get("FLEET_ADVERTISE_IP") or _detect_tailscale_ip(),
         node_timeout_s=int(os.environ.get("FLEET_NODE_TIMEOUT", "15")),
         heartbeat_interval_s=int(os.environ.get("FLEET_HEARTBEAT_INTERVAL", "5")),
         heartbeat_retention_days=int(os.environ.get("FLEET_HB_RETENTION_DAYS", "7")),

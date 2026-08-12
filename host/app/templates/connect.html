@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect a node - Hermes Fleet</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <style>
+    main.connect { display: block; padding: 2rem; max-width: 700px; }
+    p.lead { color: var(--muted); margin-top: 0; }
+    .warning {
+      background: #2a1f10; border: 1px solid #5a3d10; color: #e8c374;
+      border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.85rem; margin-bottom: 1.5rem;
+    }
+    pre.cmd {
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      padding: 1rem; white-space: pre-wrap; word-break: break-all;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem;
+      position: relative;
+    }
+    button.copy {
+      margin-top: 0.75rem; background: var(--card); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
+    }
+    button.copy:hover { border-color: var(--green); }
+    form.model-form { margin-top: 2rem; display: flex; gap: 0.5rem; align-items: center; }
+    form.model-form label { color: var(--muted); font-size: 0.85rem; }
+    form.model-form input {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 0.4rem 0.6rem;
+    }
+    form.model-form button {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Hermes Fleet</h1>
+    <div id="summary"><a href="/" style="color: var(--muted);">&larr; dashboard</a></div>
+  </header>
+  <main class="connect">
+    <p class="lead">Send this one command to a friend. It installs Tailscale, joins your tailnet, then installs and registers a node -- nothing else needed from them.</p>
+
+    {% if not advertise_ip %}
+    <div class="warning">
+      Tailscale isn't detected on this host yet, so the command below can't reach it.
+      Install Tailscale here and run <code>tailscale up</code>, or set FLEET_ADVERTISE_IP,
+      then reload this page.
+    </div>
+    {% endif %}
+    {% if not tailscale_authkey %}
+    <div class="warning">
+      No reusable Tailscale auth key configured (FLEET_TS_AUTHKEY) -- your friend's
+      <code>tailscale up</code> will need to open a browser and log in manually.
+      Generate a reusable, pre-approved key in the Tailscale admin console to skip this.
+    </div>
+    {% endif %}
+
+    <pre class="cmd" id="cmd">{{ install_cmd }}</pre>
+    <button class="copy" id="copy-btn" data-cmd="{{ install_cmd }}">copy command</button>
+
+    <form class="model-form" method="get" action="/connect">
+      <label for="model">model to install:</label>
+      <input type="text" id="model" name="model" value="{{ model }}">
+      <button type="submit">update</button>
+    </form>
+  </main>
+  <script>
+    document.getElementById("copy-btn").addEventListener("click", async (e) => {
+      await navigator.clipboard.writeText(e.target.dataset.cmd);
+      e.target.textContent = "copied!";
+      setTimeout(() => { e.target.textContent = "copy command"; }, 1500);
+    });
+  </script>
+</body>
+</html>
