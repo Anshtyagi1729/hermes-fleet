@@ -27,6 +27,22 @@ def _persistent_token(name: str) -> str:
     return token
 
 
+def _persisted_secret(name: str, env_value: str) -> str:
+    """Like _persistent_token, but for a secret WE don't generate -- you do
+    (the Tailscale admin console gives you the auth key). If the env var is
+    set, write it to disk so future runs don't need it re-exported every
+    time; otherwise fall back to whatever was persisted last time.
+    """
+    path = DATA_DIR / name
+    if env_value:
+        path.write_text(env_value)
+        path.chmod(0o600)
+        return env_value
+    if path.exists():
+        return path.read_text().strip()
+    return ""
+
+
 def _detect_tailscale_ip() -> str:
     """Best-effort `tailscale ip -4`, empty string if tailscale isn't
     installed/running. Used so /connect can show a working command without
@@ -54,8 +70,9 @@ class Settings:
     invite_token: str
 
     # Tailscale pre-auth key, so the friend's `tailscale up` asks them nothing.
-    # Created by you in the Tailscale admin console, then exported here.
-    # Empty means /connect will show manual join instructions instead.
+    # Created by you in the Tailscale admin console. Set FLEET_TS_AUTHKEY once
+    # and it's persisted to data/ from then on -- no need to re-export it in
+    # every new shell. Empty means /connect shows a manual-login warning.
     tailscale_authkey: str
 
     # How the host reaches itself in the generated one-liner. Detected from
@@ -89,7 +106,7 @@ def load_settings() -> Settings:
         port=int(os.environ.get("FLEET_PORT", "8080")),
         db_path=Path(os.environ.get("FLEET_DB", DATA_DIR / "fleet.db")),
         invite_token=os.environ.get("FLEET_INVITE_TOKEN") or _persistent_token("invite_token"),
-        tailscale_authkey=os.environ.get("FLEET_TS_AUTHKEY", ""),
+        tailscale_authkey=_persisted_secret("tailscale_authkey", os.environ.get("FLEET_TS_AUTHKEY", "")),
         advertise_ip=os.environ.get("FLEET_ADVERTISE_IP") or _detect_tailscale_ip(),
         node_timeout_s=int(os.environ.get("FLEET_NODE_TIMEOUT", "15")),
         heartbeat_interval_s=int(os.environ.get("FLEET_HEARTBEAT_INTERVAL", "5")),
