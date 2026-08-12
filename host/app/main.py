@@ -10,13 +10,16 @@ Two trust boundaries, deliberately different:
     is the real access control for "can see this box exists," same as the
     original design doc said for the node side.
 
-Routing/proxying (/v1/...) is not here yet -- that's M2. This app currently
-only answers "who is in the fleet," not "answer this prompt."
+  - /v1/... (M2) requires nothing either. This is the endpoint Hermes talks
+    to, and Hermes doesn't know about the invite token -- same trust model
+    as the dashboard: reachable only if you're already on the tailnet (or,
+    right now, on localhost, since bind_host defaults to 127.0.0.1).
 """
 
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +27,8 @@ from fastapi.templating import Jinja2Templates
 
 from .config import settings
 from .db import Database
+from .load import LoadTracker
+from .proxy import ProxyError, proxy_chat_completion
 from .registry import Registry
 from .schemas import (
     EnabledRequest,
@@ -41,7 +46,13 @@ async def lifespan(app: FastAPI):
     db = Database(settings.db_path)
     app.state.db = db
     app.state.registry = Registry(db, settings.node_timeout_s)
+    app.state.load_tracker = LoadTracker()
+    # One shared client for the process, not one per request -- reuses
+    # connections to nodes instead of paying a fresh TCP+TLS-ish handshake
+    # per proxied call.
+    app.state.http_client = httpx.AsyncClient()
     yield
+    await app.state.http_client.aclose()
     db.close()
 
 
@@ -103,6 +114,41 @@ def set_enabled(node_id: str, req: EnabledRequest, registry: Registry = Depends(
     if not registry.set_enabled(node_id, req.enabled):
         raise HTTPException(status_code=404, detail="unknown node_id")
     return {"ok": True}
+
+
+async def _proxy(request: Request):
+    body = await request.json()
+    try:
+        return await proxy_chat_completion(
+            path=request.url.path,
+            body=body,
+            client=request.app.state.http_client,
+            registry=request.app.state.registry,
+            tracker=request.app.state.load_tracker,
+            db=request.app.state.db,
+        )
+    except ProxyError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: Request):
+    return await _proxy(request)
+
+
+@app.post("/v1/completions")
+async def completions(request: Request):
+    return await _proxy(request)
+
+
+@app.get("/v1/models")
+def list_models(registry: Registry = Depends(get_registry)):
+    # Shape matches OpenAI's /v1/models so Hermes doesn't need to know it's
+    # talking to a router instead of a real inference server.
+    return {
+        "object": "list",
+        "data": [{"id": m, "object": "model", "owned_by": "hermes-fleet"} for m in registry.known_models()],
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
