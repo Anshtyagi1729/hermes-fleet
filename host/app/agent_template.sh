@@ -52,12 +52,36 @@ fi
 log "node id: $NODE_ID"
 
 # ---------------------------------------------------------------- 3. ollama
+# Every step here is written to be safe to re-run: skip the install if the
+# binary is already there, skip (re)configuring the server if it's already
+# reachable on the tailnet address, and `ollama pull` on an already-present
+# model is a fast manifest check, not a re-download -- Ollama's blobs are
+# content-addressed, so it only fetches layers it doesn't already have.
 if ! command -v ollama >/dev/null 2>&1; then
   log "installing Ollama..."
   curl -fsSL https://ollama.com/install.sh | sh
+else
+  log "Ollama already installed, skipping install"
 fi
 
-if ! curl -fsS "http://$TS_IP:11434/" >/dev/null 2>&1; then
+if curl -fsS "http://$TS_IP:11434/" >/dev/null 2>&1; then
+  log "Ollama already reachable on $TS_IP:11434, leaving it as-is"
+elif command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet ollama 2>/dev/null; then
+  # The official installer sets Ollama up as a systemd service bound to
+  # 127.0.0.1 by default. If we backgrounded a SECOND `ollama serve` here
+  # instead, it would fight the systemd-managed one over the same model
+  # storage. Reconfigure the existing service instead of running a rival.
+  log "Ollama is running as a systemd service, not on the tailnet -- reconfiguring it"
+  sudo mkdir -p /etc/systemd/system/ollama.service.d
+  printf '[Service]\nEnvironment="OLLAMA_HOST=%s:11434"\n' "$TS_IP" \
+    | sudo tee /etc/systemd/system/ollama.service.d/hermes-fleet.conf >/dev/null
+  sudo systemctl daemon-reload
+  sudo systemctl restart ollama
+  for _ in $(seq 1 15); do
+    curl -fsS "http://$TS_IP:11434/" >/dev/null 2>&1 && break
+    sleep 1
+  done
+else
   log "starting Ollama on $TS_IP:11434..."
   # Subshell + trap so the server survives this script's process exiting
   # once it hands control back to the terminal (nohup alone doesn't always
@@ -70,7 +94,7 @@ if ! curl -fsS "http://$TS_IP:11434/" >/dev/null 2>&1; then
   done
 fi
 
-log "pulling $MODEL (first time can take a while)..."
+log "pulling $MODEL (already-present models are a fast check, not a re-download)..."
 OLLAMA_HOST="$TS_IP:11434" ollama pull "$MODEL"
 
 # ------------------------------------------------------------ 4. GPU / VRAM
